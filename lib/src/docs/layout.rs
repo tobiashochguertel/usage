@@ -1,9 +1,67 @@
+use crate::SpecChoices;
+
 /// Calculate terminal width from environment or use default
+///
+/// Priority order:
+/// 1. USAGE_TERMINAL_WIDTH environment variable (workaround for testing)
+/// 2. COLUMNS environment variable (traditional shell setting)
+/// 3. Actual terminal size detection via terminal_size crate
+/// 4. Default fallback of 80 columns
 pub fn get_terminal_width() -> usize {
-    std::env::var("COLUMNS")
+    // First check USAGE_TERMINAL_WIDTH for explicit override (workaround)
+    if let Some(width) = std::env::var("USAGE_TERMINAL_WIDTH")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(80)
+    {
+        return width;
+    }
+
+    // Then check COLUMNS environment variable
+    if let Some(width) = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        return width;
+    }
+
+    // Try to detect actual terminal size
+    if let Some((terminal_size::Width(w), _)) = terminal_size::terminal_size() {
+        return w as usize;
+    }
+
+    // Default fallback
+    80
+}
+
+/// Metadata that should be appended to help text
+#[derive(Default)]
+pub struct HelpMetadata<'a> {
+    pub choices: Option<&'a SpecChoices>,
+    pub env: Option<&'a str>,
+    pub default: Option<&'a [String]>,
+}
+
+/// Build full help text including metadata annotations
+fn build_full_help_text(help: &str, metadata: &HelpMetadata) -> String {
+    let mut parts = vec![help.to_string()];
+
+    if let Some(choices) = metadata.choices {
+        let values = choices.choices.join(", ");
+        parts.push(format!("[possible values: {}]", values));
+    }
+
+    if let Some(env) = metadata.env {
+        parts.push(format!("[env: {}]", env));
+    }
+
+    if let Some(default) = metadata.default {
+        if !default.is_empty() {
+            let default_str = default.join(", ");
+            parts.push(format!("[default: {}]", default_str));
+        }
+    }
+
+    parts.join(" ")
 }
 
 /// Calculate maximum usage string width across items
@@ -76,8 +134,22 @@ pub fn render_help_text(
     terminal_width: usize,
     usage_col_width: usize,
 ) -> (String, bool) {
+    render_help_with_metadata(help, terminal_width, usage_col_width, &HelpMetadata::default())
+}
+
+/// Render help text including metadata (choices, env, default) with proper alignment and wrapping
+/// Returns (rendered_text, is_multiline)
+pub fn render_help_with_metadata(
+    help: &str,
+    terminal_width: usize,
+    usage_col_width: usize,
+    metadata: &HelpMetadata,
+) -> (String, bool) {
+    // Build full help text including metadata
+    let full_help = build_full_help_text(help, metadata);
+
     // If help contains explicit newlines, use block layout (legacy behavior)
-    if help.contains('\n') {
+    if full_help.contains('\n') {
         // Return None for inline rendering - template will use block layout
         return (String::new(), false);
     }
@@ -97,7 +169,7 @@ pub fn render_help_text(
     }
 
     // Wrap text to available width
-    let wrapped_lines = wrap_text(help, available_width);
+    let wrapped_lines = wrap_text(&full_help, available_width);
 
     if wrapped_lines.is_empty() || (wrapped_lines.len() == 1 && wrapped_lines[0].is_empty()) {
         return (String::new(), false);

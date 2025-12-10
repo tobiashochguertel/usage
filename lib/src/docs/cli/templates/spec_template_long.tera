@@ -35,7 +35,6 @@ Arguments:
 {%- if help %}
     {{ help | indent(width=2) }}
 {%- endif %}
-{%- endif %}
 {%- if arg.choices %}
     [possible values: {{ arg.choices.choices | join(sep=", ") }}]
 {%- endif %}
@@ -44,6 +43,7 @@ Arguments:
 {%- endif %}
 {%- if arg.default %}
     (default: {{ arg.default | join(sep=", ") }})
+{%- endif %}
 {%- endif %}
 {%- endfor %}
 {%- endif %}
@@ -64,12 +64,12 @@ Flags:
 {%- if help %}
     {{ help | indent(width=2) }}
 {%- endif %}
-{%- endif %}
 {%- if flag.arg.choices %}
     [possible values: {{ flag.arg.choices.choices | join(sep=", ") }}]
 {%- endif %}
 {%- if flag.env %}
     [env: {{ flag.env }}]
+{%- endif %}
 {%- endif %}
 {%- endfor %}
 {%- endif -%}

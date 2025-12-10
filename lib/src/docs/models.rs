@@ -1,3 +1,4 @@
+use crate::docs::layout::{get_terminal_width, max_usage_width, render_help_with_metadata, HelpMetadata};
 use crate::docs::markdown::MarkdownRenderer;
 use crate::SpecChoices;
 use indexmap::IndexMap;
@@ -135,8 +136,6 @@ impl From<crate::Spec> for Spec {
 
 impl From<&crate::SpecCommand> for SpecCommand {
     fn from(cmd: &crate::SpecCommand) -> Self {
-        use crate::docs::layout::{get_terminal_width, max_usage_width, render_help_text};
-
         let terminal_width = get_terminal_width();
 
         // Calculate layout for args
@@ -149,15 +148,25 @@ impl From<&crate::SpecCommand> for SpecCommand {
 
                 // Get help text (prefer help_long over help)
                 let help_text = spec_arg.help_long.as_deref().or(spec_arg.help.as_deref());
+                let help = help_text.unwrap_or("");
 
-                if let Some(help) = help_text {
-                    let (rendered, is_multiline) =
-                        render_help_text(help, terminal_width, args_usage_col_width);
-                    // Only set help_rendered if we have content (empty string signals block layout)
-                    if !rendered.is_empty() {
-                        spec_arg.help_rendered = Some(rendered);
-                        spec_arg.help_is_multiline = is_multiline;
-                    }
+                // Build metadata for inline rendering
+                let metadata = HelpMetadata {
+                    choices: spec_arg.choices.as_ref(),
+                    env: spec_arg.env.as_deref(),
+                    default: if spec_arg.default.is_empty() {
+                        None
+                    } else {
+                        Some(&spec_arg.default)
+                    },
+                };
+
+                let (rendered, is_multiline) =
+                    render_help_with_metadata(help, terminal_width, args_usage_col_width, &metadata);
+                // Only set help_rendered if we have content (empty string signals block layout)
+                if !rendered.is_empty() {
+                    spec_arg.help_rendered = Some(rendered);
+                    spec_arg.help_is_multiline = is_multiline;
                 }
 
                 spec_arg.usage_col_width = args_usage_col_width;
@@ -175,15 +184,32 @@ impl From<&crate::SpecCommand> for SpecCommand {
 
                 // Get help text (prefer help_long over help)
                 let help_text = spec_flag.help_long.as_deref().or(spec_flag.help.as_deref());
+                let help = help_text.unwrap_or("");
 
-                if let Some(help) = help_text {
-                    let (rendered, is_multiline) =
-                        render_help_text(help, terminal_width, flags_usage_col_width);
-                    // Only set help_rendered if we have content (empty string signals block layout)
-                    if !rendered.is_empty() {
-                        spec_flag.help_rendered = Some(rendered);
-                        spec_flag.help_is_multiline = is_multiline;
-                    }
+                // Build metadata for inline rendering
+                // Note: flags use arg.choices, not flag.choices directly
+                let arg_choices = spec_flag.arg.as_ref().and_then(|a| a.choices.as_ref());
+                let arg_default = spec_flag.arg.as_ref().map(|a| &a.default);
+
+                let metadata = HelpMetadata {
+                    choices: arg_choices,
+                    env: spec_flag.env.as_deref(),
+                    default: match arg_default {
+                        Some(d) if !d.is_empty() => Some(d.as_slice()),
+                        _ => if spec_flag.default.is_empty() {
+                            None
+                        } else {
+                            Some(&spec_flag.default)
+                        },
+                    },
+                };
+
+                let (rendered, is_multiline) =
+                    render_help_with_metadata(help, terminal_width, flags_usage_col_width, &metadata);
+                // Only set help_rendered if we have content (empty string signals block layout)
+                if !rendered.is_empty() {
+                    spec_flag.help_rendered = Some(rendered);
+                    spec_flag.help_is_multiline = is_multiline;
                 }
 
                 spec_flag.usage_col_width = flags_usage_col_width;
